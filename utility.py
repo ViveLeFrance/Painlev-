@@ -22,18 +22,17 @@ class LefschetzFibration:
         f = self.fibration
         a = var('a', domain=CC) # additional variable to solve for parallelity
 
-        variables = self.variables
 
         constraints = [G==0]
-        constraints.extend([G.diff(variable) == a*f.diff(variable) for variable in variables])
+        constraints.extend([G.diff(variable) == a*f.diff(variable) for variable in self.variables])
 
-        points = solve(constraints, variables + [a])
+        points = solve(constraints, self.variables + [a])
 
         return points
 
     def get_critical_values(self):
         crit_points = self.get_critical_points()
-        return [self.__call__(x) for x in crit_points]
+        return list(set([self.__call__(x) for x in crit_points]))
 
     def get_fibre(self, point, variable=None):
         """Solves for the fibre of a given point in the specified variable.
@@ -50,20 +49,36 @@ class LefschetzFibration:
 
         return G.subs(fib_solution).simplify()
     
-    def get_matching_path(self, rho_eq, origin_fibre, target_fibre, steps=70, solvefor=None):
+    def get_matching_path(self, rho_eq, origin_fibre=None, target_fibre=None, steps=70, solvefor=None, path=None):
+
+        if (origin_fibre is None or target_fibre is None) and path is None:
+            raise ValueError("Please provide a path or origin and target fibres.")
 
         t = var('t', domain=CC)
+
+        if solvefor is None:
+            solvefor = self.variables[0]
 
         fibre_t = self.get_fibre(t, solvefor)
         rho_eq_t = rho_eq.subs(solvefor == fibre_t)
 
-        matching_path = {}
+        variables = self.variables
+        # variables.remove(solvefor)
 
-        for s in np.linspace(0,1,steps):
-            fibre_s = fibre_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
-            rho_eq_s = rho_eq_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
-            rho_s = LefschetzFibration(self.variables, fibre_s, rho_eq_s)
-            matching_path[s] = rho_s.get_critical_values()
+        matching_path = {}
+        if not path:
+            
+            for s in np.linspace(0,1,steps):
+                fibre_s = fibre_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
+                rho_eq_s = rho_eq_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
+                rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
+                matching_path[s] = rho_s.get_critical_values()
+        else:
+            for index, point in enumerate(path):
+                fibre_s = fibre_t.subs(t=point)
+                rho_eq_s = rho_eq_t.subs(t=point)
+                rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
+                matching_path[index] = rho_s.get_critical_values()
 
         return matching_path
     
@@ -75,21 +90,21 @@ def NumericalRoots(expr):
     return np.polynomial.polynomial.polyroots(coeffs)
 
 def sort_by_angle(points: List[complex], origin_fibre: complex = 0, anticlockwise: bool = False):
-    """Sorts a list of points by their argument, anticlockwise."""
+    """Sorts a list of points by their argument, starting from the negative real axis."""
     points = [complex(point) for point in points]
 
-    points = sorted(points, key=lambda point: np.pi+np.angle(point-origin_fibre)%(2*np.pi))
+    points = sorted(points, key=lambda point: (-np.pi+np.angle(point-origin_fibre))%(2*np.pi))
     if not anticlockwise:
         points.reverse()
     return points
 
-def plot_points_ordered(points: List[complex], title: str = None, fig=None, ax=None, origin_fibre = 0):
+def plot_points_ordered(points: List[complex], title: str = None, fig=None, ax=None, origin_fibre = 0, anticlockwise=False):
     """Plots a list of points on the complex plane, ordered anticlockwise by argument."""
     # Sage complex type is not compatible with python's, but can be coerced
     points = [complex(point) for point in points]
 
     # Sort points by argument
-    points = sort_by_angle(points, origin_fibre=origin_fibre, anticlockwise=False)
+    points = sort_by_angle(points, origin_fibre=origin_fibre, anticlockwise=anticlockwise)
 
     real = [point.real for point in points]
     imag = [point.imag for point in points]
@@ -117,11 +132,11 @@ def plot_points_ordered(points: List[complex], title: str = None, fig=None, ax=N
     # plt.show()
 
 
-def plot_path(path: Dict[complex, List[complex]], title: str = None):
+def plot_path(path: Dict[complex, List[complex]], title: str = None, origin_fibre=0, anticlockwise=False):
     plot_points_origin = path[0]
     plot_points_target = path[1]
 
-    fig, ax = plot_points_ordered(plot_points_origin, title=title)
+    fig, ax = plot_points_ordered(plot_points_origin, title=title, origin_fibre=origin_fibre, anticlockwise=anticlockwise)
 
     ax.plot([point.real() for point in plot_points_target], [point.imag() for point in plot_points_target], 'co', markersize=5)
 
@@ -137,7 +152,27 @@ def plot_path(path: Dict[complex, List[complex]], title: str = None):
 
     return fig, ax
 
+def pl_path(points: List[complex], steps=70):
+    path = []
 
+    for i in range(0, len(points)-1):
+        for s in np.linspace(0,1,steps):
+            path.append((1-s)*points[i] + s*points[(i+1)])
+    return path
+
+def pl_path_1(origin_fibre, target_fibre, offset = None, steps=70, above=True):
+    if offset is None:
+        offset = np.abs(target_fibre - origin_fibre)/4
+
+    theta = np.arctan(1/2)
+    hyp = offset / np.sin(theta)
+
+    if above is True:
+        intermediate_point = origin_fibre + hyp*np.exp(1j*theta)
+    else:
+        intermediate_point = origin_fibre - hyp*np.exp(1j*theta)
+
+    return pl_path([origin_fibre, intermediate_point, target_fibre], steps=steps)
 
 
 
