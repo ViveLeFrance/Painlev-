@@ -1,6 +1,7 @@
 from typing import List, Dict
-from sage.all import var, solve, CC, simplify, Expression
+from sage.all import var, solve, CC, simplify, Expression, point3d
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 
 
@@ -81,6 +82,8 @@ class LefschetzFibration:
                 matching_path[index] = rho_s.get_critical_values()
 
         return matching_path
+
+    
     
     
 def NumericalRoots(expr):
@@ -152,6 +155,25 @@ def plot_path(path: Dict[complex, List[complex]], title: str = None, origin_fibr
 
     return fig, ax
 
+def plot_path_3d(path: Dict[complex, List[complex]], title: str = None, origin_fibre=0, anticlockwise=False):
+
+    points = []
+
+    for index, step in enumerate(path.values()):
+        
+        for point in step:
+
+
+            points.append((point.real(), point.imag(), index/len(path)))
+
+    scatter_plot = point3d(points, size=10, color='blue')
+
+    scatter_plot.show()
+
+    
+
+
+
 def pl_path(points: List[complex], steps=70):
     path = []
 
@@ -173,6 +195,69 @@ def pl_path_1(origin_fibre, target_fibre, offset = None, steps=70, above=True):
         intermediate_point = origin_fibre - hyp*np.exp(1j*theta)
 
     return pl_path([origin_fibre, intermediate_point, target_fibre], steps=steps)
+
+
+def trace_preimage(rho: LefschetzFibration, t, path: List[complex], title=None, solvefor=None):
+    if solvefor is None:
+        solvefor = rho.variables[0]
+
+    fibre_rho_t = rho.get_fibre(t, solvefor)
+    
+
+    fibres = []
+
+    for s in path:
+        fibre_rho_s = fibre_rho_t.subs(t=s)
+        fibres.append(NumericalRoots(fibre_rho_s))
+
+    # fibres = np.array(fibres)
+
+    plot_points_real = []
+    plot_points_imag = []
+    for preimage in fibres:
+        plot_points_real.append([value.real for value in preimage])
+        plot_points_imag.append([value.imag for value in preimage])
+
+    fig, ax = plt.subplots()    
+
+    ax.spines['left'].set_position(('data', 0))
+    # Move bottom spine to y=0
+    ax.spines['bottom'].set_position(('data', 0))
+
+    # Remove the top and right spines
+    ax.spines['right'].set_color('none')
+    ax.spines['top'].set_color('none')
+
+    ax.set_title(title)
+
+    init_sols = NumericalRoots(fibre_rho_t.subs(t==path[0]))
+    init_real = [value.real for value in init_sols]
+    init_imag = [value.imag for value in init_sols]
+    
+    final_sols = NumericalRoots(fibre_rho_t.subs(t==path[-1]))
+    final_real = [value.real for value in final_sols]
+    final_imag = [value.imag for value in final_sols]
+
+    regular_sols = NumericalRoots(fibre_rho_t.subs(t==path[len(path)//2]))
+    regular_real = [value.real for value in regular_sols]
+    regular_imag = [value.imag for value in regular_sols]
+
+
+    
+    
+    ax.plot(init_real, init_imag, 'ro', markersize=5)
+    ax.plot(final_real, final_imag, 'co', markersize=5)
+    ax.plot(regular_real, regular_imag, 'o', color='purple', markersize=5)
+
+
+    ax.grid(True)
+
+    ax.plot(plot_points_real, plot_points_imag, 'bo', markersize=2)
+
+    return fig, ax
+
+
+
 
 
 
