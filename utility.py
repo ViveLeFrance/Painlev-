@@ -1,5 +1,5 @@
 from typing import List, Dict
-from sage.all import var, solve, CC, simplify, Expression, point3d
+from sage.all import var, solve, CC, simplify, Expression, point3d, line3d
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
@@ -156,6 +156,7 @@ def plot_path(path: Dict[complex, List[complex]], title: str = None, origin_fibr
     return fig, ax
 
 def plot_path_3d(path: Dict[complex, List[complex]], title: str = None, origin_fibre=0, anticlockwise=False):
+   
 
     points = []
 
@@ -166,9 +167,24 @@ def plot_path_3d(path: Dict[complex, List[complex]], title: str = None, origin_f
 
             points.append((point.real(), point.imag(), index/len(path)))
 
-    scatter_plot = point3d(points, size=10, color='blue')
+    init_points  =[(point.real(), point.imag(), 0) for point in path[0]]
+    final_points = [(point.real(), point.imag(), 1) for point in path[1]]
+    init_plot = point3d(init_points, size=20, color='red')
+    target_plot = point3d(final_points, size=20, color='green')
+    trajectory_plot = point3d(points, size=10, color='blue')
 
-    scatter_plot.show()
+    axis_length = 2
+
+    # Create axes (x, y, z) at the origin
+    x_axis = line3d([(0,0,0), (axis_length,0,0)], color='black', thickness=1.5)
+    y_axis = line3d([(0,0,0), (0,axis_length,0)], color='black', thickness=1.5)
+    z_axis = line3d([(0,0,0), (0,0,axis_length)], color='black', thickness=1.5)
+
+    axes = x_axis + y_axis + z_axis
+
+    plot = trajectory_plot + init_plot + target_plot + axes
+
+    plot.show()
 
     
 
