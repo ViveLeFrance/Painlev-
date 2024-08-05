@@ -1,8 +1,11 @@
 from typing import List, Dict
-from sage.all import var, solve, CC, simplify, Expression, point3d, line3d
+# from sage.all import var, solve, CC, simplify, Expression, point3d, line3d
+from sage.all import *
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
+from typing import Any
+import random
 
 
 
@@ -26,11 +29,10 @@ class LefschetzFibration:
 
         constraints = [G==0]
         constraints.extend([G.diff(variable) == a*f.diff(variable) for variable in self.variables])
-
         points = solve(constraints, self.variables + [a])
-
         return points
 
+       
     def get_critical_values(self):
         crit_points = self.get_critical_points()
         return list(set([self.__call__(x) for x in crit_points]))
@@ -49,8 +51,29 @@ class LefschetzFibration:
         fib_solution = solve(f == point, variable) # f linear, so we expect a single equation
 
         return G.subs(fib_solution).simplify()
+
+    def get_fibre_boundary_components(self, point, variable=None):
+        if variable is None:
+            variable = self.variables[0]
+
+        fibre = self.get_fibre(point, variable)
+
+        w = var('w', domain=CC)
+        variables = [variable for variable in self.variables]
+        variables.remove(variable)
+        variables.append(w)
+        R = PolynomialRing(CC, names=variables)
+
+        fibre_hom = SR(R(fibre).homogenize(var='w'))
+
+        constraints = [w==0, fibre_hom==0]
+
+        intersection = solve(constraints, variables, solution_dict=True)
+
+        return set_free_variable_to_one_list(intersection)
+
     
-    def get_matching_path(self, rho_eq, origin_fibre=None, target_fibre=None, steps=70, solvefor=None, path=None):
+    def get_matching_path(self, rho_eq, origin_fibre=None, target_fibre=None, steps=70, solvefor=None, path=None, split=False):
 
         if (origin_fibre is None or target_fibre is None) and path is None:
             raise ValueError("Please provide a path or origin and target fibres.")
@@ -67,19 +90,41 @@ class LefschetzFibration:
         # variables.remove(solvefor)
 
         matching_path = {}
-        if not path:
-            
-            for s in np.linspace(0,1,steps):
-                fibre_s = fibre_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
-                rho_eq_s = rho_eq_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
-                rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
-                matching_path[s] = rho_s.get_critical_values()
+        if not split:
+            if not path:
+                
+                for s in np.linspace(0,1,steps):
+                    fibre_s = fibre_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
+                    rho_eq_s = rho_eq_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
+                    rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
+                    matching_path[s] = rho_s.get_critical_values()
+            else:
+                for index, point in enumerate(path):
+                    fibre_s = fibre_t.subs(t==point)
+                    rho_eq_s = rho_eq_t.subs(t==point)
+                    rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
+                    matching_path[index] = rho_s.get_critical_values()
         else:
-            for index, point in enumerate(path):
-                fibre_s = fibre_t.subs(t=point)
-                rho_eq_s = rho_eq_t.subs(t=point)
-                rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
-                matching_path[index] = rho_s.get_critical_values()
+            path_number = len(LefschetzFibration(variables, fibre_t.subs(t==origin_fibre), rho_eq).get_critical_values())
+            if not path:
+                for path_no in range(path_number):
+                    matching_path[path_no] = {}
+                    for s in np.linspace(0,1,steps):
+                        fibre_s = fibre_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
+                        rho_eq_s = rho_eq_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
+                        rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
+                        crits = rho_s.get_critical_values()
+                    
+                        matching_path[path_no][s] = [crits[path_no]]
+
+            else:
+                for path_no in range(path_number):
+                    matching_path[path_no] = {}
+                    for index, point in enumerate(path):
+                        fibre_s = fibre_t.subs(t==point)
+                        rho_eq_s = rho_eq_t.subs(t==point)
+                        rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
+                        matching_path[path_no][index] = [rho_s.get_critical_values()[path_no]]
 
         return matching_path
 
@@ -92,22 +137,114 @@ def NumericalRoots(expr):
     coeffs = [complex(coefficient) for coefficient in coeffs]
     return np.polynomial.polynomial.polyroots(coeffs)
 
-def sort_by_angle(points: List[complex], origin_fibre: complex = 0, anticlockwise: bool = False):
+def set_free_variable_to_one(sol: dict):
+    # Identify the free variable
+    free_var = None
+    for key in sol.keys():
+        for variable in sol[key].variables():
+            if str(variable).startswith('r'):
+                free_var = variable
+                # substitute the free variable with 1
+                sol[key] = sol[key].subs(free_var==1)
+
+    return sol
+
+def set_free_variable_to_one_list(sols: List[dict]):
+    return [set_free_variable_to_one(sol) for sol in sols]
+
+def jacobian(f: List[Expression], vars):
+    return matrix(SR, [[diff(f_i, var_j) for var_j in vars] for f_i in f])
+
+def intersection_at_infinity(f: LefschetzFibration):
+    """Determines the intersection of the projectivization of the homogenized domain of f with 
+    its zero set at infinity."""
+    w = var('w', domain=CC)
+    variables = [variable for variable in f.variables]
+    variables.append(w)
+    R = PolynomialRing(CC, names=variables)
+
+    G_hom = G_hom = SR(R(f.domain).homogenize(var='w'))
+    f_hom = SR(R(f.fibration).homogenize(var='w'))
+
+    constraints = [w==0, G_hom==0, f_hom==0]
+
+    intersection = solve(constraints, variables, solution_dict=True)
+
+    return set_free_variable_to_one_list(intersection)
+
+
+def intersection_summary(f: LefschetzFibration):
+    w = var('w', domain=CC)
+    variables = [variable for variable in f.variables]
+    variables.append(w)
+    R = PolynomialRing(CC, names=variables)
+
+    G_hom = G_hom = SR(R(f.domain).homogenize(var='w'))
+    f_hom = SR(R(f.fibration).homogenize(var='w'))
+
+    hyp_at_inf_constraints = [G_hom==0, w==0]
+    f_vanishing = [f_hom==0]
+
+    constraints = [expression for expression in hyp_at_inf_constraints]
+    constraints.extend(f_vanishing)
+
+    print(f'The hyperplane at infinity is given by {G_hom.subs(w==0)} == 0.')
+    print(f'The fibration vanishes at {f_vanishing}.')
+    intersection = set_free_variable_to_one_list(solve(constraints, variables, solution_dict=True))
+
+    print(f'Their intersection consists of {intersection}.')
+
+
+def kernels(f: LefschetzFibration, point: dict[Any, Any]):
+    w = var('w', domain=CC)
+    variables = [variable for variable in f.variables]
+    variables.append(w)
+    R = PolynomialRing(CC, names=variables)
+
+    G_hom = G_hom = SR(R(f.domain).homogenize(var='w'))
+    f_hom = SR(R(f.fibration).homogenize(var='w'))
+    
+    J_inf = jacobian([G_hom, w], variables).subs(point).transpose()
+    J_f = jacobian([G_hom, f_hom], variables).subs(point).transpose()
+    # print('****************')
+    # print(J_inf)
+    # print(J_f)
+    # print('****************')
+
+    ker_inf = J_inf.kernel()
+    ker_f = J_f.kernel()
+
+    # print('----------------')
+    # print(ker_inf)
+    # print(ker_f)
+    # print('----------------')
+
+    intersection = ker_inf.intersection(ker_f)
+
+    return intersection
+
+
+def sort_by_angle(points: List[complex], origin_fibre: complex = 0, anticlockwise: bool = True):
     """Sorts a list of points by their argument, starting from the negative real axis."""
     points = [complex(point) for point in points]
+    
+    #  np.angle returns the argument of a complex number in the range (-pi, pi] starting from
+    #  the positive real line going counterclockwise.
 
     points = sorted(points, key=lambda point: (-np.pi+np.angle(point-origin_fibre))%(2*np.pi))
     if not anticlockwise:
         points.reverse()
     return points
 
-def plot_points_ordered(points: List[complex], title: str = None, fig=None, ax=None, origin_fibre = 0, anticlockwise=False):
+def plot_points_ordered(points: List[complex], title: str = None, fig=None, ax=None, origin_fibre = 0, anticlockwise=True):
     """Plots a list of points on the complex plane, ordered anticlockwise by argument."""
     # Sage complex type is not compatible with python's, but can be coerced
     points = [complex(point) for point in points]
 
     # Sort points by argument
     points = sort_by_angle(points, origin_fibre=origin_fibre, anticlockwise=anticlockwise)
+
+  
 
     real = [point.real for point in points]
     imag = [point.imag for point in points]
@@ -123,19 +260,26 @@ def plot_points_ordered(points: List[complex], title: str = None, fig=None, ax=N
     ax.spines['right'].set_color('none')
     ax.spines['top'].set_color('none')
 
-    for index, point in enumerate(points):
-        ax.text(point.real+0.05, point.imag, str(index), fontsize=12, color='blue')
+    
     
     ax.set_title(title)
     
     ax.plot(real, imag, 'ro', markersize=5)
     ax.grid(True)
 
+    xlim = ax.get_xlim()
+    data_width = xlim[1] - xlim[0]
+
+
+
+    for index, point in enumerate(points):
+        ax.text(point.real+0.05*data_width, point.imag, str(index), fontsize=12, color='blue')
+
     return fig, ax
     # plt.show()
 
 
-def plot_path(path: Dict[complex, List[complex]], title: str = None, origin_fibre=0, anticlockwise=False):
+def plot_path(path: Dict[complex, List[complex]], title: str = None, origin_fibre=0, anticlockwise=True):
     plot_points_origin = path[0]
     plot_points_target = path[1]
 
@@ -155,7 +299,14 @@ def plot_path(path: Dict[complex, List[complex]], title: str = None, origin_fibr
 
     return fig, ax
 
-def plot_path_3d(path: Dict[complex, List[complex]], title: str = None, origin_fibre=0, anticlockwise=False):
+def color_generator(n: int):
+    cmap = plt.get_cmap('hsv')
+    index = 0
+    while True:
+        yield cmap(index)
+        index+=1/n
+
+def plot_path_3d(path: Dict[complex, List[complex]], title: str = None, origin_fibre=0, anticlockwise=False, trajectory_color = 'blue'):
    
 
     points = []
@@ -163,15 +314,22 @@ def plot_path_3d(path: Dict[complex, List[complex]], title: str = None, origin_f
     for index, step in enumerate(path.values()):
         
         for point in step:
-
-
             points.append((point.real(), point.imag(), index/len(path)))
+
+    n = len(path[0])
+
+    color = color_generator(n)
 
     init_points  =[(point.real(), point.imag(), 0) for point in path[0]]
     final_points = [(point.real(), point.imag(), 1) for point in path[1]]
     init_plot = point3d(init_points, size=20, color='red')
     target_plot = point3d(final_points, size=20, color='green')
-    trajectory_plot = point3d(points, size=10, color='blue')
+    trajectory_plot = point3d(points, size=10, color=trajectory_color)
+
+    # for origin in range(n):
+    #     slice = [point[origin] for point in points]
+    #     print(slice)
+    #     trajectory_plot = point3d(slice, size=10, color=next(color))
 
     axis_length = 2
 
@@ -183,12 +341,23 @@ def plot_path_3d(path: Dict[complex, List[complex]], title: str = None, origin_f
     axes = x_axis + y_axis + z_axis
 
     plot = trajectory_plot + init_plot + target_plot + axes
+   
+    if title:
+        title_text = text3d(title, (0, 0, axis_length + 0.5), color='black', fontsize=20)
+        plot += title_text
 
     plot.show()
 
     
 
-
+def perturb(path: List[complex], radius: float, seed):
+    random.seed(seed)
+    perturbed_path = []
+    for point in path:
+        angle = random.uniform(0,2*np.pi)
+        rand_radius = random.uniform(0, radius)
+        perturbed_path.append(point + rand_radius*complex(np.cos(angle), np.sin(angle)))
+    return perturbed_path
 
 def pl_path(points: List[complex], steps=70):
     path = []
@@ -213,12 +382,11 @@ def pl_path_1(origin_fibre, target_fibre, offset = None, steps=70, above=True):
     return pl_path([origin_fibre, intermediate_point, target_fibre], steps=steps)
 
 
-def trace_preimage(rho: LefschetzFibration, t, path: List[complex], title=None, solvefor=None):
+def trace_preimage(rho: LefschetzFibration, t, path: List[complex], title=None, solvefor=None, origin_fibre=0, anticlockwise=True):
     if solvefor is None:
         solvefor = rho.variables[0]
 
     fibre_rho_t = rho.get_fibre(t, solvefor)
-    
 
     fibres = []
 
@@ -247,6 +415,9 @@ def trace_preimage(rho: LefschetzFibration, t, path: List[complex], title=None, 
     ax.set_title(title)
 
     init_sols = NumericalRoots(fibre_rho_t.subs(t==path[0]))
+    init_sols = sort_by_angle(init_sols, origin_fibre=origin_fibre, anticlockwise=anticlockwise)
+
+
     init_real = [value.real for value in init_sols]
     init_imag = [value.imag for value in init_sols]
     
@@ -259,9 +430,11 @@ def trace_preimage(rho: LefschetzFibration, t, path: List[complex], title=None, 
     regular_imag = [value.imag for value in regular_sols]
 
 
-    
-    
+    for index, point in enumerate(init_sols):
+        ax.text(point.real+0.05, point.imag, str(index), fontsize=12, color='blue')
     ax.plot(init_real, init_imag, 'ro', markersize=5)
+    
+    # ax.plot(init_real, init_imag, 'ro', markersize=5)
     ax.plot(final_real, final_imag, 'co', markersize=5)
     ax.plot(regular_real, regular_imag, 'o', color='purple', markersize=5)
 
@@ -272,44 +445,4 @@ def trace_preimage(rho: LefschetzFibration, t, path: List[complex], title=None, 
 
     return fig, ax
 
-
-
-
-
-
-# x,y,z = var('x, y, z', domain=CC)
-
-
-
-# # Equation of affine surface
-# G_eq = x**3 + x*y**2 + z**2 -1
-# fibration_eq = x+y
-
-# f = LefschetzFibration([x,y,z], G_eq, fibration_eq)
-
-# rho_eq = x
-
-# crit_points_f = f.get_critical_points()
-# crit_values_f = f.get_critical_values()
-
-# origin_fibre = 0
-# target_fibre = crit_values_f[0]
-
-# matching_path = f.get_matching_path(rho_eq, 0, crit_values_f[0], solvefor=y)
-
-# fig, ax = plot_path(matching_path)
-
-# plt.show()
-
-
-
-# # x,y,z,t = var('x, y, z, t', domain=CC)
-
-# # # Equation of affine surface
-# # G_eq = x**3 + x*y**2 + z*2 -1
-# # fibration_eq = x+y
-
-# # f = LefschetzFibration([x,y,z], G_eq, fibration_eq)
-
-# # print(f.get_fibre(t, y))
 
