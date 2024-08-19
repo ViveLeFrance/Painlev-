@@ -29,6 +29,7 @@ class LefschetzFibration:
 
         constraints = [G==0]
         constraints.extend([G.diff(variable) == a*f.diff(variable) for variable in self.variables])
+
         points = solve(constraints, self.variables + [a])
         return points
 
@@ -324,12 +325,7 @@ def plot_path_3d(path: Dict[complex, List[complex]], title: str = None, origin_f
     final_points = [(point.real(), point.imag(), 1) for point in path[1]]
     init_plot = point3d(init_points, size=20, color='red')
     target_plot = point3d(final_points, size=20, color='green')
-    trajectory_plot = point3d(points, size=10, color=trajectory_color)
-
-    # for origin in range(n):
-    #     slice = [point[origin] for point in points]
-    #     print(slice)
-    #     trajectory_plot = point3d(slice, size=10, color=next(color))
+    trajectory_plot = point3d(points, size=5, color=trajectory_color)
 
     axis_length = 2
 
@@ -361,6 +357,9 @@ def perturb(path: List[complex], radius: float, seed):
 
 def pl_path(points: List[complex], steps=70):
     path = []
+
+    if len(points) == 1:
+        return [points[0]]*steps
 
     for i in range(0, len(points)-1):
         for s in np.linspace(0,1,steps):
@@ -445,4 +444,134 @@ def trace_preimage(rho: LefschetzFibration, t, path: List[complex], title=None, 
 
     return fig, ax
 
+
+def parameterized_rho_crits(rho: LefschetzFibration, rho_param_path: Dict[str, List[complex]]):
+
+    if len(rho_param_path['a']) != len(rho_param_path['b']):
+        raise ValueError("The paths must have the same number of points.")
+
+    if len(rho.variables) != 2:
+        raise ValueError("The fibration must be linear in two variables.")
+    
+    n = len(rho_param_path['a'])
+
+    r1, r2 = var('r1, r2', domain=CC)
+
+
+    domain = rho.domain.subs(rho.variables[0]==r1, rho.variables[1]==r2)
+
+
+    a_path = rho_param_path['a']
+    b_path = rho_param_path['b']
+  
+    crits = {}
+    
+    for i in range(n):
+        rho_eq = CC(a_path[i])*r1 + CC(b_path[i])*r2
+        rho_i = LefschetzFibration([r1,r2], domain, rho_eq)
+
+        crits[i] = rho_i.get_critical_values()
+
+    return crits
+
+def plot_paths(paths: Dict[int, List[complex]], origin_fibre_rho=0):
+    fig, ax = plot_points_ordered(paths[0], origin_fibre=origin_fibre_rho)
+    paths.pop(0)
+
+    for index, path in paths.items():
+        
+        real = [complex(point).real for point in path]
+        imag = [complex(point).imag for point in path]
+
+        ax.plot(real, imag, 'o',color='blue', markersize=1)
+
+    ax.grid(True)
+    plt.show()
+
+
+
+def alg_mul(*args):
+    result = args[0]
+    for arg in args[1:]:
+        result = result._mul_(arg)
+    return result
+
+def differential_operator(expr, generator_images, generator_degrees, algebra=None):
+    
+    if algebra:
+    # expr = expr.expand()
+        # elif expr.is_Pow:
+        #     base, exp = expr.as_base_exp()
+        #     if base in generator_degrees:
+        #         # Apply the chain rule: d(a^n) = n * a^(n-1) * d(a)
+        #         return exp * base**(exp - 1) * differential_operator(base, generator_images, generator_degrees)
+        #     else:
+        #         return 0
+        if len(expr.terms())>1:
+            sum  = 0
+            for term in expr.terms():
+                sum += differential_operator(term, generator_images, generator_degrees, algebra=algebra)
+                return sum
+        elif len(str(expr.support()[0]).split('*'))>1:
+ 
+            path = str(expr.support()[0]).split('*')
+ 
+            coeff = expr.coefficients()[0]
+            algebra_path = []
+            for vertex in path:
+                for gen in algebra.gens():
+                    if vertex in str(gen):
+                        algebra_path.append(gen)
+            # Apply the derivation relation: d(a * b) = d(a) * b + a * d(b)
+   
+                        
+            first_term = coeff*differential_operator(algebra_path[0], generator_images, generator_degrees, algebra=algebra) * alg_mul(*algebra_path[1:])
+            degree_of_first = generator_degrees.get(algebra_path[0], 0)
+
+            second_term = (-1)**degree_of_first *coeff* algebra_path[0] * differential_operator(alg_mul(*algebra_path[1:]), generator_images, generator_degrees, algebra=algebra)
+            return first_term + second_term
+        else:
+            coeff = expr.coefficients()[0]
+            if 1/coeff * expr in generator_images:
+                return coeff * generator_images[1/coeff * expr]
+            else:
+                return 0
+
+            # For P1 according to CM
+
+P = DiGraph({Integer(0): {Integer(0): ['a','b','x','y','z']}})
+
+P_group = P.path_semigroup()
+A = P_group.algebra(CC)
+
+e_0, a,b,x,y,z = A.gens()
+
+# a,b = sp.symbols('a, b', commutative=False) # degree 1
+# x,y,z = sp.symbols('x, y, z', commutative=False) # degree 0
+
+d_vals = {
+    e_0: 0,
+    a: 1+x+z+x*y*z,
+    b: 1+x+z+z*y*x,
+    x: 0,
+    y: 0,
+    z: 0
+    }
+
+degrees = {
+    e_0: 0,
+    a: 1,
+    b: 1,
+    x: 0,
+    y: 0,
+    z: 0
+}
+
+def d(expr):
+    return differential_operator(expr, d_vals, degrees, algebra=A)
+
+expr = a*(1+y*x)-(1+x*y)*b
+
+print(d(expr))
+print(expr)
 
