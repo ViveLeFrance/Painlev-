@@ -53,6 +53,48 @@ class LefschetzFibration:
 
         return G.subs(fib_solution).simplify()
 
+
+    def get_hessian(self, solvefor):
+        abstract_pi = function('abs_pi', self.variables)
+        pi_z = solve(self.fibration == abstract_pi, solvefor)[0]
+
+        
+
+        second_derivatives = []
+        solved_vars = self.variables
+        solved_vars.remove(solvefor)
+        dpi = var('dpi', domain=CC)
+        d_vars = [var(f'd_{variable}', domain=CC) for variable in solved_vars]
+        dz = pi_z.subs(abstract_pi == dpi, )
+
+
+
+        domain_differential = {variable: self.domain.diff(variable).subs(pi_z) for variable in self.variables}
+
+        d_pi_eq = sum([coeff * dvar for coeff, dvar in zip(domain_differential, d_vars)]) + 2 == 0
+        # dpi_eq = {variable: }
+        # dz = {variable: -1/pi_z*domain_differential[variable] for variable in solved_vars}
+
+
+
+            
+        for variable in self.variables:
+            print(variable)
+            f_w = solve(self.fibration == t, variable)
+            print(self.fibration==t)
+            for term in domain_differential:
+                print(term)
+                print(f_w)
+                term.subs(f_w[0])
+                second_derivatives.append(term.diff(variable))
+
+        n = len(self.variables)
+        matrix = Matrix(SR, n, n, second_derivatives)
+        return matrix        
+
+
+
+
     def get_fibre_boundary_components(self, point, variable=None):
         if variable is None:
             variable = self.variables[0]
@@ -276,8 +318,8 @@ def plot_points_ordered(points: List[complex], title: str = None, fig=None, ax=N
     for index, point in enumerate(points):
         ax.text(point.real+0.05*data_width, point.imag, str(index), fontsize=12, color='blue')
 
-    return fig, ax
-    # plt.show()
+    # return fig, ax
+    plt.show()
 
 
 def plot_path(path: Dict[complex, List[complex]], title: str = None, origin_fibre=0, anticlockwise=True):
@@ -488,90 +530,4 @@ def plot_paths(paths: Dict[int, List[complex]], origin_fibre_rho=0):
     ax.grid(True)
     plt.show()
 
-
-
-def alg_mul(*args):
-    result = args[0]
-    for arg in args[1:]:
-        result = result._mul_(arg)
-    return result
-
-def differential_operator(expr, generator_images, generator_degrees, algebra=None):
-    
-    if algebra:
-    # expr = expr.expand()
-        # elif expr.is_Pow:
-        #     base, exp = expr.as_base_exp()
-        #     if base in generator_degrees:
-        #         # Apply the chain rule: d(a^n) = n * a^(n-1) * d(a)
-        #         return exp * base**(exp - 1) * differential_operator(base, generator_images, generator_degrees)
-        #     else:
-        #         return 0
-        if len(expr.terms())>1:
-            sum  = 0
-            for term in expr.terms():
-                sum += differential_operator(term, generator_images, generator_degrees, algebra=algebra)
-                return sum
-        elif len(str(expr.support()[0]).split('*'))>1:
- 
-            path = str(expr.support()[0]).split('*')
- 
-            coeff = expr.coefficients()[0]
-            algebra_path = []
-            for vertex in path:
-                for gen in algebra.gens():
-                    if vertex in str(gen):
-                        algebra_path.append(gen)
-            # Apply the derivation relation: d(a * b) = d(a) * b + a * d(b)
-   
-                        
-            first_term = coeff*differential_operator(algebra_path[0], generator_images, generator_degrees, algebra=algebra) * alg_mul(*algebra_path[1:])
-            degree_of_first = generator_degrees.get(algebra_path[0], 0)
-
-            second_term = (-1)**degree_of_first *coeff* algebra_path[0] * differential_operator(alg_mul(*algebra_path[1:]), generator_images, generator_degrees, algebra=algebra)
-            return first_term + second_term
-        else:
-            coeff = expr.coefficients()[0]
-            if 1/coeff * expr in generator_images:
-                return coeff * generator_images[1/coeff * expr]
-            else:
-                return 0
-
-            # For P1 according to CM
-
-P = DiGraph({Integer(0): {Integer(0): ['a','b','x','y','z']}})
-
-P_group = P.path_semigroup()
-A = P_group.algebra(CC)
-
-e_0, a,b,x,y,z = A.gens()
-
-# a,b = sp.symbols('a, b', commutative=False) # degree 1
-# x,y,z = sp.symbols('x, y, z', commutative=False) # degree 0
-
-d_vals = {
-    e_0: 0,
-    a: 1+x+z+x*y*z,
-    b: 1+x+z+z*y*x,
-    x: 0,
-    y: 0,
-    z: 0
-    }
-
-degrees = {
-    e_0: 0,
-    a: 1,
-    b: 1,
-    x: 0,
-    y: 0,
-    z: 0
-}
-
-def d(expr):
-    return differential_operator(expr, d_vals, degrees, algebra=A)
-
-expr = a*(1+y*x)-(1+x*y)*b
-
-print(d(expr))
-print(expr)
 
