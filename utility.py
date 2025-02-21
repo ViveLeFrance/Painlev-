@@ -2,10 +2,14 @@ from typing import List, Dict
 # from sage.all import var, solve, CC, simplify, Expression, point3d, line3d
 from sage.all import *
 import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
 from mpl_toolkits.mplot3d import Axes3D
+from scipy.optimize import fsolve
+from dataclasses import dataclass
 import numpy as np
 from typing import Any
 import random
+
 
 
 
@@ -30,7 +34,20 @@ class LefschetzFibration:
         constraints = [G==0]
         constraints.extend([G.diff(variable) == a*f.diff(variable) for variable in self.variables])
 
-        points = solve(constraints, self.variables + [a])
+
+        points = solve(constraints, self.variables + [a], solution_dict=True)
+
+
+
+        for p in points:
+            del p[a]
+
+            # for key in p.keys():
+            #     p[key] = complex(round(p[key].real(),8),round(p[key].imag(),8)) 
+
+
+        # unique_dicts = [dict(t) for t in {frozenset(d.items()) for d in points}]
+
         return points
 
        
@@ -129,6 +146,8 @@ class LefschetzFibration:
         fibre_t = self.get_fibre(t, solvefor)
         rho_eq_t = rho_eq.subs(solvefor == fibre_t)
 
+
+
         variables = self.variables
         # variables.remove(solvefor)
 
@@ -171,8 +190,6 @@ class LefschetzFibration:
 
         return matching_path
 
-    
-    
     
 def NumericalRoots(expr):
     """Returns the numerical roots of the polynomial 'expr'."""
@@ -319,7 +336,8 @@ def plot_points_ordered(points: List[complex], title: str = None, fig=None, ax=N
         ax.text(point.real+0.05*data_width, point.imag, str(index), fontsize=12, color='blue')
 
     # return fig, ax
-    plt.show()
+    plt.ion()
+    # plt.show()
 
 
 def plot_path(path: Dict[complex, List[complex]], title: str = None, origin_fibre=0, anticlockwise=True):
@@ -517,17 +535,67 @@ def parameterized_rho_crits(rho: LefschetzFibration, rho_param_path: Dict[str, L
     return crits
 
 def plot_paths(paths: Dict[int, List[complex]], origin_fibre_rho=0):
-    fig, ax = plot_points_ordered(paths[0], origin_fibre=origin_fibre_rho)
+     # Sage complex type is not compatible with python's, but can be coerced
+    points = [complex(point) for point in paths[0]]
+
+    # Sort points by argument
+    points = sort_by_angle(points, origin_fibre=origin_fibre_rho, anticlockwise=True)
+
+  
+
+    real = [point.real for point in points]
+    imag = [point.imag for point in points]
+    
+    # if ax is None:
+    fig, ax = plt.subplots()
+
+    ax.spines['left'].set_position(('data', 0))
+    # Move bottom spine to y=0
+    ax.spines['bottom'].set_position(('data', 0))
+
+    # Remove the top and right spines
+    ax.spines['right'].set_color('none')
+    ax.spines['top'].set_color('none')
+
+    
+    
+    ax.set_title("trace of critical values for chosen parameter ranges")
+    
+    ax.plot(real, imag, 'ro', markersize=5)
+    ax.grid(True)
+
+    xlim = ax.get_xlim()
+    data_width = xlim[1] - xlim[0]
+
+
+
+    for index, point in enumerate(points):
+        ax.text(point.real+0.05*data_width, point.imag, str(index), fontsize=12, color='blue')
+
     paths.pop(0)
+
+    cmap = plt.get_cmap('viridis')
+
+    gradient = range(len(paths))
+    norm = Normalize(vmin=min(gradient), vmax=max(gradient))
 
     for index, path in paths.items():
         
         real = [complex(point).real for point in path]
         imag = [complex(point).imag for point in path]
 
-        ax.plot(real, imag, 'o',color='blue', markersize=1)
+        color = cmap(norm(index))
 
-    ax.grid(True)
+        ax.scatter(real, imag, color=color, norm=norm, s=1)
+
+    target_points = paths[len(paths)-1]
+    points = [complex(point) for point in target_points]
+
+    real = [point.real for point in points]
+    imag = [point.imag for point in points]
+
+    ax.plot(real, imag, 'mo', markersize=5)
+        
     plt.show()
 
 
