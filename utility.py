@@ -367,7 +367,7 @@ def color_generator(n: int):
         yield cmap(index)
         index+=1/n
 
-def plot_path_3d(path: Dict[complex, List[complex]], title: str = None, origin_fibre=0, anticlockwise=False, trajectory_color = 'blue'):
+def plot_path_3d(path: Dict[complex, List[complex]], title: str = None, origin_fibre=0, anticlockwise=True, trajectory_color = 'blue'):
    
 
     points = []
@@ -380,6 +380,18 @@ def plot_path_3d(path: Dict[complex, List[complex]], title: str = None, origin_f
     n = len(path[0])
 
     color = color_generator(n)
+
+    sorted_points = sort_by_angle(path[0], origin_fibre=origin_fibre, anticlockwise=anticlockwise)
+    sorted_points = [complex(pt) for pt in sorted_points]
+
+
+    # Now, generate labels in order.
+    labels = []
+    for i, pt in enumerate(sorted_points):
+        # Place the label near the point (using its x,y coordinate and z=0).
+        label = text3d(str(i), (pt.real, pt.imag, 0.05), color='purple', fontsize=30, fontweight='bold')
+        labels.append(label)
+
 
     init_points  =[(point.real(), point.imag(), 0) for point in path[0]]
     final_points = [(point.real(), point.imag(), 1) for point in path[1]]
@@ -397,6 +409,8 @@ def plot_path_3d(path: Dict[complex, List[complex]], title: str = None, origin_f
     axes = x_axis + y_axis + z_axis
 
     plot = trajectory_plot + init_plot + target_plot + axes
+    for lab in labels:
+        plot += lab
    
     if title:
         title_text = text3d(title, (0, 0, axis_length + 0.5), color='black', fontsize=20)
