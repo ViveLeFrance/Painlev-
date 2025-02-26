@@ -133,7 +133,7 @@ class LefschetzFibration:
         return set_free_variable_to_one_list(intersection)
 
     
-    def get_matching_path(self, rho_eq, origin_fibre=None, target_fibre=None, steps=70, solvefor=None, path=None, split=False):
+    def get_matching_path(self, rho_eq, origin_fibre=None, target_fibre=None, steps=70, solvefor=None, path=None):
 
         if (origin_fibre is None or target_fibre is None) and path is None:
             raise ValueError("Please provide a path or origin and target fibres.")
@@ -152,41 +152,42 @@ class LefschetzFibration:
         # variables.remove(solvefor)
 
         matching_path = {}
-        if not split:
-            if not path:
-                
-                for s in np.linspace(0,1,steps):
-                    fibre_s = fibre_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
-                    rho_eq_s = rho_eq_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
-                    rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
-                    matching_path[s] = rho_s.get_critical_values()
-            else:
-                for index, point in enumerate(path):
-                    fibre_s = fibre_t.subs(t==point)
-                    rho_eq_s = rho_eq_t.subs(t==point)
-                    rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
-                    matching_path[index] = rho_s.get_critical_values()
+        # if not split:
+        if not path:
+            
+            for s in np.linspace(0,1,steps):
+                fibre_s = fibre_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
+                rho_eq_s = rho_eq_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
+                rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
+                matching_path[s] = rho_s.get_critical_values()
         else:
-            path_number = len(LefschetzFibration(variables, fibre_t.subs(t==origin_fibre), rho_eq).get_critical_values())
-            if not path:
-                for path_no in range(path_number):
-                    matching_path[path_no] = {}
-                    for s in np.linspace(0,1,steps):
-                        fibre_s = fibre_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
-                        rho_eq_s = rho_eq_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
-                        rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
-                        crits = rho_s.get_critical_values()
+            n = len(path)
+            for index, point in enumerate(path):
+                fibre_s = fibre_t.subs(t==point)
+                rho_eq_s = rho_eq_t.subs(t==point)
+                rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
+                matching_path[index/(n-1)] = rho_s.get_critical_values()
+        # else:
+        #     path_number = len(LefschetzFibration(variables, fibre_t.subs(t==origin_fibre), rho_eq).get_critical_values())
+        #     if not path:
+        #         for path_no in range(path_number):
+        #             matching_path[path_no] = {}
+        #             for s in np.linspace(0,1,steps):
+        #                 fibre_s = fibre_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
+        #                 rho_eq_s = rho_eq_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
+        #                 rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
+        #                 crits = rho_s.get_critical_values()
                     
-                        matching_path[path_no][s] = [crits[path_no]]
+        #                 matching_path[path_no][s] = [crits[path_no]]
 
-            else:
-                for path_no in range(path_number):
-                    matching_path[path_no] = {}
-                    for index, point in enumerate(path):
-                        fibre_s = fibre_t.subs(t==point)
-                        rho_eq_s = rho_eq_t.subs(t==point)
-                        rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
-                        matching_path[path_no][index] = [rho_s.get_critical_values()[path_no]]
+        #     else:
+        #         for path_no in range(path_number):
+        #             matching_path[path_no] = {}
+        #             for index, point in enumerate(path):
+        #                 fibre_s = fibre_t.subs(t==point)
+        #                 rho_eq_s = rho_eq_t.subs(t==point)
+        #                 rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
+        #                 matching_path[path_no][index] = [rho_s.get_critical_values()[path_no]]
 
         return matching_path
 
@@ -378,6 +379,7 @@ def plot_path_3d(path: Dict[complex, List[complex]], title: str = None, origin_f
             points.append((point.real(), point.imag(), index/len(path)))
 
     n = len(path[0])
+
 
     color = color_generator(n)
 
