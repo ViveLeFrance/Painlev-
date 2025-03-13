@@ -12,22 +12,44 @@ import random
 
 
 
+class BranchChart:
+
+    def __init__(self, branch_value, chart_equation):
+        self.branch_value = branch_value.expand()
+        self.chart_equation = chart_equation.expand()
+
+    def __repr__(self):
+        return f"BranchChart(branch_value={self.branch_value}, equation={self.chart_equation})"
+    
+    
+def sort_by_angle(points: List[complex], origin_fibre: complex = 0, anticlockwise: bool = True):
+    """Sorts a list of points by their argument, starting from the negative real axis."""
+    points = [complex(point) for point in points]
+
+    #  np.angle returns the argument of a complex number in the range (-pi, pi] starting from
+    #  the positive real line going counterclockwise.
+
+    points = sorted(points, key=lambda point: (-np.pi+np.angle(point-origin_fibre))%(2*np.pi))
+    if not anticlockwise:
+        points.reverse()
+    return points
+    
 
 class LefschetzFibration:
 
-    def __init__(self, variables, domain_equation, fibration_equation) -> None:
+    def __init__(self, variables, domain, mapping) -> None:
         self.variables = variables
-        self.domain = domain_equation
-        self.fibration = fibration_equation
+        self.domain = domain
+        self.mapping = mapping
 
     def __call__(self, argument):
-        return self.fibration.subs(argument)
-
-    def get_critical_points(self):
+        return self.mapping.subs(argument)
+    
+    def critical_locus(self, approx=True):
         """Solves for when the gradient of the domain
         is parallel to the differential of the fibration."""
         G = self.domain
-        f = self.fibration
+        f = self.mapping
         a = var('a', domain=CC) # additional variable to solve for parallelity
 
 
@@ -36,26 +58,22 @@ class LefschetzFibration:
 
 
         points = solve(constraints, self.variables + [a], solution_dict=True)
-
-
+        if approx:
+            for value in points:
+                for key in value.keys():
+                    value[key] = N(value[key])
 
         for p in points:
             del p[a]
 
-            # for key in p.keys():
-            #     p[key] = complex(round(p[key].real(),8),round(p[key].imag(),8)) 
-
-
-        # unique_dicts = [dict(t) for t in {frozenset(d.items()) for d in points}]
-
         return points
 
        
-    def get_critical_values(self):
-        crit_points = self.get_critical_points()
-        return list(set([self.__call__(x) for x in crit_points]))
+    def critical_values(self, origin_fibre=0):
+        crit_points = self.critical_locus()
+        return sort_by_angle(list(set([N(self.__call__(x)) for x in crit_points])), origin_fibre=origin_fibre, anticlockwise=True)
 
-    def get_fibre(self, point, variable=None):
+    def fibre(self, point, variable=None):
         """Solves for the fibre of a given point in the specified variable.
         If no variable is specified, it will solve for the first variable in the list.
         Note that we assume the fibration to be linear in all variables."""
@@ -63,17 +81,18 @@ class LefschetzFibration:
         if variable is None:
             variable = self.variables[0]
 
-        f = self.fibration
+        f = self.mapping
         G = self.domain
 
         fib_solution = solve(f == point, variable) # f linear, so we expect a single equation
 
-        return G.subs(fib_solution).simplify()
+        # return [G.subs(fib) for fib in fib_solution]
+        return [BranchChart(sol, G.subs(sol)) for sol in fib_solution]
 
 
     def get_hessian(self, solvefor):
         abstract_pi = function('abs_pi', self.variables)
-        pi_z = solve(self.fibration == abstract_pi, solvefor)[0]
+        pi_z = solve(self.mapping == abstract_pi, solvefor)[0]
 
         
 
@@ -97,8 +116,8 @@ class LefschetzFibration:
             
         for variable in self.variables:
             print(variable)
-            f_w = solve(self.fibration == t, variable)
-            print(self.fibration==t)
+            f_w = solve(self.mapping == t, variable)
+            print(self.mapping==t)
             for term in domain_differential:
                 print(term)
                 print(f_w)
@@ -116,7 +135,7 @@ class LefschetzFibration:
         if variable is None:
             variable = self.variables[0]
 
-        fibre = self.get_fibre(point, variable)
+        fibre = self.fibre(point, variable)
 
         w = var('w', domain=CC)
         variables = [variable for variable in self.variables]
@@ -143,7 +162,7 @@ class LefschetzFibration:
         if solvefor is None:
             solvefor = self.variables[0]
 
-        fibre_t = self.get_fibre(t, solvefor)
+        fibre_t = self.fibre(t, solvefor)
         rho_eq_t = rho_eq.subs(solvefor == fibre_t)
 
 
@@ -159,14 +178,14 @@ class LefschetzFibration:
                 fibre_s = fibre_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
                 rho_eq_s = rho_eq_t.subs(t==(1-s)*origin_fibre + s*target_fibre)
                 rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
-                matching_path[s] = rho_s.get_critical_values()
+                matching_path[s] = rho_s.critical_values()
         else:
             n = len(path)
             for index, point in enumerate(path):
                 fibre_s = fibre_t.subs(t==point)
                 rho_eq_s = rho_eq_t.subs(t==point)
                 rho_s = LefschetzFibration(variables, fibre_s, rho_eq_s)
-                matching_path[index/(n-1)] = rho_s.get_critical_values()
+                matching_path[index/(n-1)] = rho_s.critical_values()
         # else:
         #     path_number = len(LefschetzFibration(variables, fibre_t.subs(t==origin_fibre), rho_eq).get_critical_values())
         #     if not path:
@@ -225,7 +244,7 @@ def intersection_at_infinity(f: LefschetzFibration):
     R = PolynomialRing(CC, names=variables)
 
     G_hom = G_hom = SR(R(f.domain).homogenize(var='w'))
-    f_hom = SR(R(f.fibration).homogenize(var='w'))
+    f_hom = SR(R(f.mapping).homogenize(var='w'))
 
     constraints = [w==0, G_hom==0, f_hom==0]
 
@@ -241,7 +260,7 @@ def intersection_summary(f: LefschetzFibration):
     R = PolynomialRing(CC, names=variables)
 
     G_hom = G_hom = SR(R(f.domain).homogenize(var='w'))
-    f_hom = SR(R(f.fibration).homogenize(var='w'))
+    f_hom = SR(R(f.mapping).homogenize(var='w'))
 
     hyp_at_inf_constraints = [G_hom==0, w==0]
     f_vanishing = [f_hom==0]
@@ -263,7 +282,7 @@ def kernels(f: LefschetzFibration, point: dict[Any, Any]):
     R = PolynomialRing(CC, names=variables)
 
     G_hom = G_hom = SR(R(f.domain).homogenize(var='w'))
-    f_hom = SR(R(f.fibration).homogenize(var='w'))
+    f_hom = SR(R(f.mapping).homogenize(var='w'))
     
     J_inf = jacobian([G_hom, w], variables).subs(point).transpose()
     J_f = jacobian([G_hom, f_hom], variables).subs(point).transpose()
@@ -285,17 +304,7 @@ def kernels(f: LefschetzFibration, point: dict[Any, Any]):
     return intersection
 
 
-def sort_by_angle(points: List[complex], origin_fibre: complex = 0, anticlockwise: bool = True):
-    """Sorts a list of points by their argument, starting from the negative real axis."""
-    points = [complex(point) for point in points]
-    
-    #  np.angle returns the argument of a complex number in the range (-pi, pi] starting from
-    #  the positive real line going counterclockwise.
 
-    points = sorted(points, key=lambda point: (-np.pi+np.angle(point-origin_fibre))%(2*np.pi))
-    if not anticlockwise:
-        points.reverse()
-    return points
 
 def plot_points_ordered(points: List[complex], title: str = None, fig=None, ax=None, origin_fibre = 0, anticlockwise=True):
     """Plots a list of points on the complex plane, ordered anticlockwise by argument."""
@@ -461,7 +470,7 @@ def trace_preimage(rho: LefschetzFibration, t, path: List[complex], title=None, 
     if solvefor is None:
         solvefor = rho.variables[0]
 
-    fibre_rho_t = rho.get_fibre(t, solvefor)
+    fibre_rho_t = rho.fibre(t, solvefor)
 
     fibres = []
 
@@ -546,7 +555,7 @@ def parameterized_rho_crits(rho: LefschetzFibration, rho_param_path: Dict[str, L
         rho_eq = CC(a_path[i])*r1 + CC(b_path[i])*r2
         rho_i = LefschetzFibration([r1,r2], domain, rho_eq)
 
-        crits[i] = rho_i.get_critical_values()
+        crits[i] = rho_i.critical_values()
 
     return crits
 
